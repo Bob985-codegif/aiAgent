@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: ai-agent-test
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: alibabacloud-bailian20231229==1.8.2
+Requires-Dist: bs4>=0.0.2
+Requires-Dist: dashscope>=1.23.5
+Requires-Dist: langchain>=0.3.25
+Requires-Dist: langchain-experimental>=0.3.4
+Requires-Dist: langchain-mcp-adapters>=0.1.1
+Requires-Dist: langchain-ollama>=0.3.2
+Requires-Dist: langchain-openai>=0.3.16
+Requires-Dist: langgraph>=0.6.0
+Requires-Dist: langgraph-checkpoint-mongodb>=0.1.4
+Requires-Dist: langgraph-checkpoint-redis>=0.0.7
+Requires-Dist: openai>=1.78.0
+Requires-Dist: psutil>=7.0.0
+Requires-Dist: pyautogui>=0.9.54
+Requires-Dist: pydantic>=2.11.4
+Requires-Dist: pymysql>=1.1.1
+Requires-Dist: selenium>=4.34.2
+
+# AI智能体开发实战
+
+> 待完善

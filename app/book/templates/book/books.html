@@ -1,0 +1,194 @@
+{% extends "book/base.html" %}
+
+{% block title %}图书列表 - 图书管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">图书管理</h1>
+    <a href="{{ url_for('book.add_book') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> 添加图书
+    </a>
+</div>
+
+<!-- 搜索框 -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <input type="text" id="searchInput" class="form-control" placeholder="搜索图书标题或作者...">
+    </div>
+</div>
+
+<!-- 图书表格 -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>标题</th>
+                <th>作者</th>
+                <th>ISBN</th>
+                <th>出版社</th>
+                <th>出版日期</th>
+                <th>库存</th>
+                <th>价格</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="bookTableBody">
+            {% for book in books.items %}
+            <tr>
+                <td>{{ book.id }}</td>
+                <td>{{ book.title }}</td>
+                <td>{{ book.author }}</td>
+                <td>{{ book.isbn or 'N/A' }}</td>
+                <td>{{ book.publisher or 'N/A' }}</td>
+                <td>{{ book.publication_date.strftime('%Y-%m-%d') if book.publication_date else 'N/A' }}</td>
+                <td>{{ book.stock_quantity }}</td>
+                <td>{{ "%.2f"|format(book.price) if book.price else 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('book.edit_book', book_id=book.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-edit"></i> 编辑
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBook({{ book.id }})">
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 分页 -->
+<nav aria-label="图书分页">
+    <ul class="pagination justify-content-center">
+        {% if books.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('book.books', page=books.prev_num) }}">上一页</a>
+            </li>
+        {% endif %}
+        
+        {% for page_num in books.iter_pages() %}
+            {% if page_num %}
+                {% if page_num != books.page %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('book.books', page=page_num) }}">{{ page_num }}</a>
+                    </li>
+                {% else %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_num }}</span>
+                    </li>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if books.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('book.books', page=books.next_num) }}">下一页</a>
+            </li>
+        {% endif %}
+    </ul>
+</nav>
+
+<!-- 确认删除模态框 -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                确定要删除这本图书吗？
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let bookToDelete = null;
+
+function deleteBook(bookId) {
+    bookToDelete = bookId;
+    const modal = new bootstrap.Modal(document.getElementById('confirmDeleteModal'));
+    modal.show();
+}
+
+document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+    if (bookToDelete) {
+        fetch(`/books/delete/${bookToDelete}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 刷新页面
+                location.reload();
+            } else {
+                alert('删除失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('删除失败');
+        });
+        
+        // 关闭模态框
+        bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal')).hide();
+    }
+});
+
+// 搜索功能
+document.getElementById('searchInput').addEventListener('input', function() {
+    const query = this.value;
+    
+    if (query.length > 0) {
+        fetch(`/api/books/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            updateTable(data);
+        });
+    } else {
+        // 如果搜索框为空，则显示全部数据
+        location.reload();
+    }
+});
+
+function updateTable(books) {
+    const tbody = document.getElementById('bookTableBody');
+    tbody.innerHTML = '';
+    
+    books.forEach(book => {
+        const row = `
+            <tr>
+                <td>${book.id}</td>
+                <td>${book.title}</td>
+                <td>${book.author}</td>
+                <td>${book.isbn || 'N/A'}</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>0</td>
+                <td>N/A</td>
+                <td>
+                    <a href="/books/edit/${book.id}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-edit"></i> 编辑
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBook(${book.id})">
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+}
+</script>
+{% endblock %}
