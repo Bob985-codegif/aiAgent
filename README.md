@@ -50,26 +50,26 @@
 
 ```mermaid
 graph TD
-    subgraph User_Layer [用户交互层]
-        A[用户输入: "集成图书管理功能"] --> B[验收交付物]
+    subgraph User_Layer["用户交互层"]
+        A["用户输入: 集成图书管理功能"] --> B["验收交付物"]
     end
 
-    subgraph Brain_Layer [LangGraph 智能调度层]
-        Supervisor[🤖 总控 Supervisor]
-        ResearchAgent[🧐 调研专家 Agent]
-        CodeAgent[💻 编码专家 Agent]
+    subgraph Brain_Layer["LangGraph 智能调度层"]
+        Supervisor["总控 Supervisor"]
+        ResearchAgent["调研专家 Agent"]
+        CodeAgent["编码专家 Agent"]
     end
 
-    subgraph Tool_Layer [MCP 工具能力层]
+    subgraph Tool_Layer["MCP 工具能力层"]
         direction TB
-        DB_Tool[MySQL 工具集<br>建表/CRUD/连接]
-        Shell_Tool[Shell 工具集<br>Git/进程管理/文件]
-        Browser_Tool[浏览器工具集<br>搜索/内容清洗]
+        DB_Tool["MySQL 工具集<br>建表/CRUD/连接"]
+        Shell_Tool["Shell 工具集<br>Git/进程管理/文件"]
+        Browser_Tool["浏览器工具集<br>搜索/内容清洗"]
     end
 
-    subgraph Env_Layer [本地执行环境 (Windows)]
-        Local_DB[(MySQL 数据库)]
-        Local_FS[文件系统/代码库]
+    subgraph Env_Layer["本地执行环境 (Windows)"]
+        Local_DB["(MySQL 数据库)"]
+        Local_FS["文件系统/代码库"]
     end
 
     %% 流程连线
@@ -86,4 +86,69 @@ graph TD
     
     Local_DB -.-> B
     Local_FS -.-> B
-```
+## 5. 详细功能需求 (Functional Requirements)
+
+### 5.1 核心调度模块 (Agent Core)
+*对应文件: `langgraph_code_agent.py`*
+
+| ID | 功能名称 | 优先级 | 需求描述 | 验收标准 |
+| :--- | :--- | :--- | :--- | :--- |
+| **F-01** | **Supervisor 任务分发** | **P0** | 能够识别用户意图，将“怎么做”的调研类问题分发给 `ResearchAgent`，将“去执行”的操作类任务分发给 `CodeAgent`。 | 能够正确区分并分发“查询 Vue3 教程”（调研）与“安装 Vue3 依赖”（执行）这两个不同指令。 |
+| **F-02** | **上下文记忆 (Memory)** | **P0** | 基于 `MemorySaver` 实现多轮对话记忆，确保多步任务（如先建表、后写代码）的上下文连贯性。 | 在第 5 轮对话中，Agent 仍能准确引用第 1 轮中用户定义的表名或变量。 |
+
+### 5.2 编码与运维能力 (Code & Ops)
+*对应文件: `code_agent.py`, `shell_tools.py`*
+
+| ID | 功能名称 | 优先级 | 需求描述 | 产品价值/设计思考 |
+| :--- | :--- | :--- | :--- | :--- |
+| **F-03** | **Git 进度实时反馈** | **P0** | 执行 `git clone` 等耗时操作时，强制开启 `--progress` 参数，并流式捕获输出日志。 | **体验优化**：消除用户在大文件下载时因终端静默而产生的“系统假死”焦虑。 |
+| **F-04** | **Windows 路径自适应** | **P0** | 自动检测操作系统，将路径格式化为 Windows 风格（`D:\\path`），严禁生成 Linux 风格路径。 | **兼容性**：确保在企业主流 Windows 办公机上零报错运行，解决开源 Agent 水土不服问题。 |
+| **F-05** | **高危指令拦截** | **P0** | 具备指令黑名单机制，识别并阻断 `rm -rf` 等高危命令；禁止全量读取 `node_modules` 目录。 | **风控**：防止 AI 幻觉导致本地文件误删、系统崩溃或 Token 费用爆炸。 |
+
+### 5.3 数据与调研能力 (Data & Research)
+*对应文件: `mysql_tools.py`, `browser_tools.py`*
+
+| ID | 功能名称 | 优先级 | 需求描述 | 产品价值/设计思考 |
+| :--- | :--- | :--- | :--- | :--- |
+| **F-06** | **智能建表与 CRUD** | **P0** | 支持将自然语言转为 SQL，执行 DDL/DML 操作，并能调用 `describe` 获取表结构信息。 | **提效**：降低数据库操作门槛，非 DBA 人员也能安全、快速地修改数据库结构。 |
+| **F-07** | **网页噪声清洗** | **P0** | 爬取网页时，算法自动移除 `script`, `style`, 注释及 `display:none` 隐藏元素。 | **成本控制**：HTML 内容瘦身率达 70%-90%，大幅降低 LLM 上下文 Token 调用成本。 |
+| **F-08** | **闭环验证** | **P1** | 关键操作后自动触发验证步骤（如：建表后自动查表结构，写入文件后自动 `ls` 确认）。 | **质量保障**：确保 Agent 交付的代码或环境配置是真实存在的、可运行的。 |
+
+---
+
+## 6. 非功能性需求 (NFR)
+
+### 6.1 性能要求
+* **响应时效**：本地工具（File/Shell 类）的调用延迟应控制在 **1秒以内**。
+* **Token 效率**：单次搜索总结任务的 Token 消耗不得超过 **10k**（通过 HTML 清洗算法保证）。
+
+### 6.2 稳定性与鲁棒性
+* **编码自动适配**：系统必须能自动处理 Windows Console 默认的 **GBK** 编码与代码库通用的 **UTF-8** 编码之间的转换，杜绝中文乱码。
+* **重试机制**：针对网络请求依赖的操作（如 `pip install`, `git clone`），Agent 需具备失败自动重试或建议换源的能力。
+
+### 6.3 安全性
+* **沙箱工作区**：所有文件读写操作应严格限制在指定的 Sandbox 目录（如 `D:\Workspace`）内，禁止越权访问系统盘（如 `C:\Windows`）。
+* **凭证安全**：数据库密码等敏感信息不应硬编码在 Prompt 中，建议通过环境变量或配置文件读取，日志中需进行脱敏处理。
+
+---
+
+## 7. 数据埋点计划
+
+为持续优化 Agent 的执行表现，需记录以下关键指标：
+
+1.  **工具调用成功率 (Tool Call Success Rate)**：统计各 MCP 工具被成功调用的比例，用于衡量工具代码的健壮性。
+2.  **任务成本 (Cost per Task)**：平均完成一个标准任务（如“新增一个 CRUD 模块”）所消耗的 Token 成本。
+3.  **人工干预率 (Human Intervention Rate)**：用户打断 Agent 执行或手动修正 Agent 错误的频率。
+
+---
+
+## 8. 附录与参考
+
+* **API 文档**：详见内部 Wiki `/docs/mcp-api`
+* **环境配置手册**：
+    * Python 3.10+
+    * MySQL 8.0 (Localhost)
+    * Chrome Driver (需匹配当前 Chrome 版本)
+* **已知风险清单**：
+    * **High**: Python 依赖库版本冲突风险 - *解决方案: 强制使用 Virtualenv 虚拟环境*
+    * **Medium**: 数据库连接数溢出 - *解决方案: 代码层已实现连接池复用机制*
