@@ -86,6 +86,8 @@ graph TD
     
     Local_DB -.-> B
     Local_FS -.-> B
+
+
 ## 5. 详细功能需求 (Functional Requirements)
 
 ### 5.1 核心调度模块 (Agent Core)
