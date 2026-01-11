@@ -4,7 +4,7 @@
 
 | 文档版本 | 修改日期 | 修改人 | 修改内容 | 状态 |
 | :--- | :--- | :--- | :--- | :--- |
-| v1.0 | 2026-01-11 | 产品经理 | 初始版本归档 (基于 MVP 代码逻辑) | **评审中** |
+| v1.1 | 2026-01-11 | AI Assistant | 修复图表渲染错误，补充安全交互与LangGraph流程 | **评审中** |
 
 ---
 
@@ -17,7 +17,6 @@
 ---
 
 ## 2. 项目背景与目标
-
 ### 2.1 现状与痛点
 * **隐私风险**：企业内部数据库结构（Schema）和核心业务代码不宜上传至公有云 LLM 环境。
 * **操作断层**：现有 GPTs 等工具仅能生成代码片段，无法自动执行 `git clone`、`npm install` 或连接本地 MySQL 执行 DDL，导致“最后一公里”仍需人工介入。
@@ -46,28 +45,28 @@
 
 ## 4. 产品架构与流程
 
-### 4.1 逻辑架构图 (Mermaid)
+### 4.1 逻辑架构图 (System Architecture)
 
 ```mermaid
 graph TD
-    subgraph User_Layer["用户交互层"]
+    subgraph User_Layer["用户交互层 (User Interaction)"]
         A["用户输入: 集成图书管理功能"] --> B["验收交付物"]
     end
 
-    subgraph Brain_Layer["LangGraph 智能调度层"]
+    subgraph Brain_Layer["LangGraph 智能调度层 (Brain)"]
         Supervisor["总控 Supervisor"]
         ResearchAgent["调研专家 Agent"]
         CodeAgent["编码专家 Agent"]
     end
 
-    subgraph Tool_Layer["MCP 工具能力层"]
+    subgraph Tool_Layer["MCP 工具能力层 (Tools)"]
         direction TB
         DB_Tool["MySQL 工具集<br>建表/CRUD/连接"]
         Shell_Tool["Shell 工具集<br>Git/进程管理/文件"]
         Browser_Tool["浏览器工具集<br>搜索/内容清洗"]
     end
 
-    subgraph Env_Layer["本地执行环境 (Windows)"]
+    subgraph Env_Layer["本地执行环境 (Windows Env)"]
         Local_DB["(MySQL 数据库)"]
         Local_FS["文件系统/代码库"]
     end
@@ -86,12 +85,47 @@ graph TD
     
     Local_DB -.-> B
     Local_FS -.-> B
+```
 
+### 4.2 LangGraph 工作流详细设计 (LangGraph Workflow)
+
+以下为基于 Supervisor 模式的多智能体协作流程图：
+
+```mermaid
+graph TD
+    %% Define styles
+    classDef default fill:#FFF9E6,stroke:#FFD591,stroke-width:2px,color:#333;
+    classDef control fill:#E6E6FA,stroke:#9370DB,stroke-width:2px;
+
+    Start(("Start")) --> Supervisor{"Supervisor Agent<br>(GPT-4/Qwen)"}
+    
+    Supervisor -->|"Task Planning"| Research["Research Expert"]
+    Supervisor -->|"Code Execution"| Code["Code Expert"]
+    
+    subgraph Research_Loop
+        Research -->|"Web Search/Doc Read"| Tools_R["Browser/Rag Tools"]
+        Tools_R --> Research
+    end
+    
+    subgraph Code_Loop
+        Code -->|"Shell/File/DB Ops"| Tools_C["Code Tools"]
+        Tools_C --> Code
+    end
+
+    Research -->|"Report/Plan"| Supervisor
+    Code -->|"Execution Result"| Supervisor
+    
+    Supervisor -->|"All Tasks Done"| End(("End"))
+    
+    class Supervisor control;
+```
+
+---
 
 ## 5. 详细功能需求 (Functional Requirements)
 
 ### 5.1 核心调度模块 (Agent Core)
-*对应文件: `langgraph_code_agent.py`*
+*对应文件: [langgraph_code_agent.py](file:///d:/BaiduNetdiskDownload/ai_agent_with_langchain/app/code_agent/agent/langgraph_code_agent.py)*
 
 | ID | 功能名称 | 优先级 | 需求描述 | 验收标准 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -99,22 +133,31 @@ graph TD
 | **F-02** | **上下文记忆 (Memory)** | **P0** | 基于 `MemorySaver` 实现多轮对话记忆，确保多步任务（如先建表、后写代码）的上下文连贯性。 | 在第 5 轮对话中，Agent 仍能准确引用第 1 轮中用户定义的表名或变量。 |
 
 ### 5.2 编码与运维能力 (Code & Ops)
-*对应文件: `code_agent.py`, `shell_tools.py`*
+*对应文件: [code_agent.py](file:///d:/BaiduNetdiskDownload/ai_agent_with_langchain/app/code_agent/agent/code_agent.py), `shell_tools.py`*
 
-| ID | 功能名称 | 优先级 | 需求描述 | 产品价值/设计思考 |
+| ID | 功能名称 | 优先级 | 需求描述 | 验收标准 |
 | :--- | :--- | :--- | :--- | :--- |
-| **F-03** | **Git 进度实时反馈** | **P0** | 执行 `git clone` 等耗时操作时，强制开启 `--progress` 参数，并流式捕获输出日志。 | **体验优化**：消除用户在大文件下载时因终端静默而产生的“系统假死”焦虑。 |
-| **F-04** | **Windows 路径自适应** | **P0** | 自动检测操作系统，将路径格式化为 Windows 风格（`D:\\path`），严禁生成 Linux 风格路径。 | **兼容性**：确保在企业主流 Windows 办公机上零报错运行，解决开源 Agent 水土不服问题。 |
-| **F-05** | **高危指令拦截** | **P0** | 具备指令黑名单机制，识别并阻断 `rm -rf` 等高危命令；禁止全量读取 `node_modules` 目录。 | **风控**：防止 AI 幻觉导致本地文件误删、系统崩溃或 Token 费用爆炸。 |
+| **F-03** | **Git 进度实时反馈** | **P0** | 执行 `git clone` 等耗时操作时，强制开启 `--progress` 参数，并流式捕获输出日志。 | 消除用户在大文件下载时因终端静默而产生的“系统假死”焦虑。 |
+| **F-04** | **Windows 路径自适应** | **P0** | 自动检测操作系统，将路径格式化为 Windows 风格（`D:\\path`），严禁生成 Linux 风格路径。 | 在路径包含空格或中文字符的目录下（如 `D:\\我的 项目\\target`），Agent 仍能正常读写文件无需报错。 |
+| **F-05** | **高危指令拦截** | **P0** | 具备指令黑名单机制，识别并阻断 `rm -rf` 等高危命令；禁止全量读取 `node_modules` 目录。 | 能够自动拦截对系统关键目录的操作。 |
 
 ### 5.3 数据与调研能力 (Data & Research)
 *对应文件: `mysql_tools.py`, `browser_tools.py`*
 
-| ID | 功能名称 | 优先级 | 需求描述 | 产品价值/设计思考 |
+| ID | 功能名称 | 优先级 | 需求描述 | 验收标准 |
 | :--- | :--- | :--- | :--- | :--- |
-| **F-06** | **智能建表与 CRUD** | **P0** | 支持将自然语言转为 SQL，执行 DDL/DML 操作，并能调用 `describe` 获取表结构信息。 | **提效**：降低数据库操作门槛，非 DBA 人员也能安全、快速地修改数据库结构。 |
-| **F-07** | **网页噪声清洗** | **P0** | 爬取网页时，算法自动移除 `script`, `style`, 注释及 `display:none` 隐藏元素。 | **成本控制**：HTML 内容瘦身率达 70%-90%，大幅降低 LLM 上下文 Token 调用成本。 |
-| **F-08** | **闭环验证** | **P1** | 关键操作后自动触发验证步骤（如：建表后自动查表结构，写入文件后自动 `ls` 确认）。 | **质量保障**：确保 Agent 交付的代码或环境配置是真实存在的、可运行的。 |
+| **F-06** | **智能建表与 CRUD** | **P0** | 支持将自然语言转为 SQL，执行 DDL/DML 操作，并能调用 `describe` 获取表结构信息。 | 生成的 DDL 必须包含合理解释的中文注释，字段类型推断准确（如金额用 Decimal）。 |
+| **F-07** | **网页噪声清洗** | **P0** | 爬取网页时，算法自动移除 `script`, `style`, 注释及 `display:none` 隐藏元素。 | HTML 内容瘦身率达 70%-90%，Token 消耗显著降低。 |
+| **F-08** | **闭环验证** | **P1** | 关键操作后自动触发验证步骤（如：建表后自动查表结构，写入文件后自动 `ls` 确认）。 | 每次生成代码后，必须紧跟一次文件存在性检查或语法检查。 |
+
+### 5.4 交互与安全增强 (Interaction & Safety) **(New)**
+*对应文件: `agent_interface.py`, `safety_guard.py`*
+
+| ID | 功能名称 | 优先级 | 需求描述 | 验收标准 |
+| :--- | :--- | :--- | :--- | :--- |
+| **F-09** | **人机确认 (HITL)** | **P0** | 涉及数据毁灭性操作（Drop, Delete, Overwrite）时，Agent 需挂起并请求用户确认。 | 删除数据库表或覆盖关键文件前，终端提示红色警告并等待输入 `Y` 确认。 |
+| **F-10** | **思考过程可视化** | **P1** | 实时流式输出 Agent 的 ReAct 思考步骤（Thought/Action/Observation）。 | 用户能看到“正在思考 > 调用 Shell > 获取结果 > 修正代码”的全过程日志。 |
+| **F-11** | **配置热重载** | **P2** | 支持并通过 `.env` 文件配置 LLM 模型、MySQL 连接串及工作区白名单。 | 修改 `.env` 中 `LLM_MODEL` 后重启 Agent，立即生效。 |
 
 ---
 
@@ -151,6 +194,3 @@ graph TD
     * Python 3.10+
     * MySQL 8.0 (Localhost)
     * Chrome Driver (需匹配当前 Chrome 版本)
-* **已知风险清单**：
-    * **High**: Python 依赖库版本冲突风险 - *解决方案: 强制使用 Virtualenv 虚拟环境*
-    * **Medium**: 数据库连接数溢出 - *解决方案: 代码层已实现连接池复用机制*
