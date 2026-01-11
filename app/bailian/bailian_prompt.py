@@ -5,7 +5,7 @@ from pydantic import SecretStr
 llm = ChatOpenAI(
     model="qwen-max-latest",
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    api_key=SecretStr("sk-a5bc80b2ab0043e49c16a846e81e02b8"),
+    api_key=SecretStr(""),
     streaming=True,
 )
 
