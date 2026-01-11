@@ -1,7 +1,7 @@
 # AI智能体开发实战
 
 ```mermaid
-graph TD
+graph TD;
     subgraph User_Lane [用户 (User)]
         A[提出需求: 集成图书列表] --> B[验收功能]
     end
@@ -23,7 +23,6 @@ graph TD
         J[MySQL数据库]
     end
 
-    %% Flow
     A --> C
     C -- 1. 环境初始化 --> D
     D --> I
